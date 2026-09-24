@@ -6,3 +6,30 @@ dist-ssr
 .env.local
 .DS_Store
 .vercel
+
+# Study, Viva & Documentation
+*.pdf
+viva/
+study/
+notes/
+report/
+tests/
+scripts/
+
+# LaTeX build files
+*.aux
+*.log
+*.out
+*.toc
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.bbl
+*.blg
+
+# Temporary & Editor files
+.vscode/
+.idea/
+*.tmp
+*.bak
+Thumbs.db

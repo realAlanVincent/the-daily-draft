@@ -39,11 +39,57 @@ function MainApp() {
   const { user, isAuthenticated } = useAuth();
 
   // ----------------------------------------------------------------------------
-  // 2. Navigation & Routing State (Declarative view switching without page reloads)
+  // 2. Navigation & Routing State — synced with the browser URL via History API
+  //    URL scheme: / → feed | /article/:id → reader | /write → editor
   // ----------------------------------------------------------------------------
-  const [currentView, setCurrentView] = useState('feed'); // 'feed' | 'article' | 'new-post'
-  const [selectedArticleId, setSelectedArticleId] = useState(null);
+  const parseCurrentPath = () => {
+    const path = window.location.pathname;
+    const articleMatch = path.match(/^\/article\/(\d+)/);
+    if (articleMatch) return { view: 'article', articleId: Number(articleMatch[1]) };
+    if (path === '/write') return { view: 'new-post', articleId: null };
+    return { view: 'feed', articleId: null };
+  };
+
+  const initialRoute = parseCurrentPath();
+  const [currentView, setCurrentView] = useState(initialRoute.view);
+  const [selectedArticleId, setSelectedArticleId] = useState(initialRoute.articleId);
   const [editingPost, setEditingPost] = useState(null);
+
+  // [Rubric: React Hook - useEffect] Sync browser URL whenever the view changes
+  const navigateTo = (view, articleId = null, replace = false) => {
+    const path =
+      view === 'article' && articleId ? `/article/${articleId}` :
+      view === 'new-post' ? '/write' : '/';
+    if (replace) {
+      window.history.replaceState({ view, articleId }, '', path);
+    } else {
+      window.history.pushState({ view, articleId }, '', path);
+    }
+    setCurrentView(view);
+    setSelectedArticleId(articleId);
+  };
+
+  // Handle browser Back / Forward buttons
+  useEffect(() => {
+    const onPopState = (e) => {
+      const state = e.state;
+      if (state && state.view) {
+        setCurrentView(state.view);
+        setSelectedArticleId(state.articleId || null);
+        setEditingPost(null);
+      } else {
+        const route = parseCurrentPath();
+        setCurrentView(route.view);
+        setSelectedArticleId(route.articleId);
+        setEditingPost(null);
+      }
+    };
+    window.addEventListener('popstate', onPopState);
+    // Stamp the initial history entry so Back always works
+    window.history.replaceState({ view: initialRoute.view, articleId: initialRoute.articleId }, '', window.location.pathname);
+    return () => window.removeEventListener('popstate', onPopState);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ----------------------------------------------------------------------------
   // 3. Search, Filter & Sort State
@@ -278,7 +324,7 @@ function MainApp() {
     }
 
     setEditingPost(null);
-    setCurrentView('feed');
+    navigateTo('feed');
   };
 
   // ----------------------------------------------------------------------------
@@ -291,8 +337,7 @@ function MainApp() {
         setPosts((prev) => prev.filter((p) => p.id !== postId));
         showToast('Article deleted.');
         if (selectedArticleId === postId) {
-          setSelectedArticleId(null);
-          setCurrentView('feed');
+          navigateTo('feed');
         }
       }
     } catch (err) {
@@ -303,7 +348,7 @@ function MainApp() {
   // Trigger editing mode with pre-populated values
   const handleEditPost = (post) => {
     setEditingPost(post);
-    setCurrentView('new-post');
+    navigateTo('new-post');
   };
 
   // Helper check: does the logged-in user own this post?
@@ -366,13 +411,12 @@ function MainApp() {
         currentTheme={theme}
         onToggleTheme={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
         onNavigateFeed={() => {
-          setCurrentView('feed');
-          setSelectedArticleId(null);
+          navigateTo('feed');
           setEditingPost(null);
         }}
         onNavigateWrite={() => {
           setEditingPost(null);
-          setCurrentView('new-post');
+          navigateTo('new-post');
         }}
         onOpenAuth={(notice = '') => {
           setAuthNotice(notice);
@@ -427,7 +471,7 @@ function MainApp() {
                     Clear Search
                   </button>
                 ) : (
-                  <button className="cta-btn" onClick={() => setCurrentView('new-post')}>
+                  <button className="cta-btn" onClick={() => navigateTo('new-post')}>
                     Write an Article
                   </button>
                 )}
@@ -444,8 +488,7 @@ function MainApp() {
                     onToggleBookmark={handleToggleBookmark}
                     isAuthor={isPostAuthor(post)}
                     onOpenArticle={(id) => {
-                      setSelectedArticleId(id);
-                      setCurrentView('article');
+                      navigateTo('article', id);
                     }}
                     onLike={handleLike}
                     onEdit={handleEditPost}
@@ -466,8 +509,7 @@ function MainApp() {
             onToggleBookmark={() => handleToggleBookmark(activeArticle.id)}
             isAuthor={isPostAuthor(activeArticle)}
             onBack={() => {
-              setCurrentView('feed');
-              setSelectedArticleId(null);
+              navigateTo('feed');
             }}
             onLike={() => handleLike(activeArticle.id)}
             onEdit={handleEditPost}
@@ -479,6 +521,12 @@ function MainApp() {
             onShowToast={showToast}
           />
         )}
+        {/* Fallback: URL points to an article but posts haven't loaded yet */}
+        {currentView === 'article' && !activeArticle && (
+          <div className="empty-state">
+            <p>{loading ? 'Loading article...' : 'Article not found.'}</p>
+          </div>
+        )}
 
         {/* VIEW 3: Create & Edit Article View (Conditional Rendering) */}
         {currentView === 'new-post' && (
@@ -487,7 +535,7 @@ function MainApp() {
             onSubmit={handleSavePost}
             onCancel={() => {
               setEditingPost(null);
-              setCurrentView('feed');
+              navigateTo('feed');
             }}
           />
         )}
